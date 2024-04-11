@@ -68,6 +68,10 @@ exports.getBestClients = catchAsync(async (req, res, next) => {
         }
     )
 
+    if (!highestPayingClients) {
+        return next(new AppError(`No clients made payments in the requested time range`, 404));
+    }
+
     res.status(200).json ({
         status: "success",
         data: {
@@ -75,5 +79,3 @@ exports.getBestClients = catchAsync(async (req, res, next) => {
         }
     }) 
 })
-
-//`/admin/best-profession?start=<date>&end=<date>`
