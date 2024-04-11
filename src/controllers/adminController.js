@@ -16,7 +16,8 @@ exports.getBestProfession = catchAsync(async (req, res, next) => {
                     INNER JOIN Jobs as 'Job' ON Contract.id = Job.ContractId
                 WHERE
                     Job.paid IS NOT NULL
-                    ${(start && end) ? 'AND Job.paymentDate BETWEEN ? AND ?' : ''}
+                    ${start ? 'AND Job.paymentDate > :start' : ''}
+                    ${end ? 'AND Job.paymentDate < :end' : ''}
                 GROUP BY
                     Profile.profession
                 ORDER BY SUM(Job.price) 
@@ -24,7 +25,7 @@ exports.getBestProfession = catchAsync(async (req, res, next) => {
                 LIMIT 1)`
             ), 'profession'],
         ],
-        replacements: [start, end],
+        replacements: {start, end},
         type: sequelize.QueryTypes.SELECT
     });
 
@@ -52,7 +53,8 @@ exports.getBestClients = catchAsync(async (req, res, next) => {
             INNER JOIN Jobs as 'Job' ON Contract.id = Job.ContractId
         WHERE
             Job.paid IS NOT NULL
-            ${(start && end) ? 'AND Job.paymentDate BETWEEN :start AND :end' : ''}
+            ${start ? 'AND Job.paymentDate > :start' : ''}
+            ${end ? 'AND Job.paymentDate < :end' : ''}
         GROUP BY
             Profile.id, Fullname
         ORDER BY 

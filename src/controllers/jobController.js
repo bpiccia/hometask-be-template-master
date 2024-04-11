@@ -1,4 +1,4 @@
-const { Contract, Job, Profile } = require('../model')
+const { Contract, Job, Profile, sequelize } = require('../model')
 const { Op } = require("sequelize");
 const AppError = require ('../utils/appError')
 const catchAsync = require('../utils/catchAsync');
@@ -17,7 +17,8 @@ exports.getUnpaidJobs = catchAsync(async (req, res, next) => {
                 [Op.or]: [
                     {ClientId: req.profile.id},
                     {ContractorId: req.profile.id},
-                ]
+                ],
+                status: 'in_progress'
             }
         }
     })) ?? []
@@ -62,49 +63,53 @@ exports.payJob = catchAsync(async (req, res, next) => {
         }
     })
 
-    const {Contract: {Client, Contractor}} = job
-
     if (!job) {
         return next(new AppError(`No Job pending payment for ID='${id}'`, 404));
     }
 
-    if (Client.balance < job.price){
+    // console.log(job)
+
+    const { Contract: {ContractorId, ClientId}} = job
+
+    const [client, contractor] = await Promise.all ([
+        Profile.findOne({id: ClientId}),
+        Profile.findOne({id: ContractorId})
+    ])
+
+    if (client.balance < job.price){
         return next(new AppError(`Not enough balance to pay for job ID='${id}'`, 400));
     }
 
-    await Promise.all ([
-        Profile.update(
-            {
-                balance: Client.balance - job.price
-            },
-            {
-                where: {
-                    id: Client.id
+    const t = await sequelize.transaction();
+
+    try {
+        await Promise.all ([
+            client.decrement('balance', {
+                by: job.price,
+                transaction: t,
+            }),
+            contractor.increment('balance', {
+                by: job.price,
+                transaction: t,
+            }),
+            Job.update(
+                {
+                    paid: true,
+                    paymentDate: new Date(),
+                },
+                {
+                    where: {
+                        id
+                    },
+                    transaction: t
                 }
-            }
-        ),
-        Profile.update(
-            {
-                balance: Contractor.balance + job.price
-            },
-            {
-                where: {
-                    id: Contractor.id
-                }
-            }
-        ),
-        Job.update(
-            {
-                paid: true,
-                paymentDate: new Date(),
-            },
-            {
-                where: {
-                    id
-                }
-            }
-        )
-    ])
+            )
+        ]);
+        await t.commit()
+    } catch (error) {
+        await t.rollback()
+        throw error
+    }
 
     const updatedJob = await Job.findOne({
         where: {
